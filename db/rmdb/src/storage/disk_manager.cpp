@@ -4,8 +4,53 @@
 #include <string.h>    // for memset
 #include <sys/stat.h>  // for stat
 #include <unistd.h>    // for lseek
+#include <iostream>
 
 #include "defs.h"
+
+static void Lseek(int fd, off_t offset, int whence) {
+    if (lseek(fd, offset, whence) < 0) {
+        perror("lseek");
+        throw UnixError{};
+    }
+}
+
+static void Write(int fd, const void *buf, size_t count) {
+    if (write(fd, buf, count) < 0) {
+        perror("write");
+        throw UnixError{};
+    }
+}
+
+static void Read(int fd, void *buf, size_t count) {
+    if (read(fd, buf, count) < 0) {
+        perror("read");
+        throw UnixError{};
+    }
+}
+
+static int Open(const char *path, int flags) {
+    int fd = -1;
+    if ((fd = open(path, flags)) < 0) {
+        perror("open");
+        throw UnixError{};
+    }
+    return fd;
+}
+
+static void Close(int fd) {
+    if (close(fd) < 0) {
+        perror("close");
+        throw UnixError{};
+    }
+}
+
+static void Unlink(const char *pathname) {
+    if (unlink(pathname) < 0) {
+        perror("unlink");
+        throw UnixError{};
+    }
+}
 
 DiskManager::DiskManager() { 
     memset(fd2pageno_, 0, MAX_FD * (sizeof(std::atomic<page_id_t>) / sizeof(char))); 
@@ -26,9 +71,12 @@ void DiskManager::write_page(int fd, page_id_t page_no, const char *offset, int 
     // 1.lseek()定位到文件头，通过(fd,page_no)可以定位指定页面及其在磁盘文件中的偏移量
     // 2.调用write()函数
     // 注意处理异常
-    //lseek
+    // 'offset' is a misleading name, which actually refers to the data about to be written
 
-
+    assert(offset != nullptr);
+    assert(num_bytes <= PAGE_SIZE);
+    Lseek(fd, page_no * PAGE_SIZE, SEEK_SET);
+    Write(fd, offset, num_bytes);
 }
 
 /**
@@ -45,8 +93,11 @@ void DiskManager::read_page(int fd, page_id_t page_no, char *offset, int num_byt
     // 1.lseek()定位到文件头，通过(fd,page_no)可以定位指定页面及其在磁盘文件中的偏移量
     // 2.调用read()函数
     // 注意处理异常
-
-  
+    // 'offset' is a misleading name, which actually refers to the data about to be written
+    assert(offset != nullptr);
+    assert(num_bytes <= PAGE_SIZE);
+    Lseek(fd, page_no * PAGE_SIZE, SEEK_SET);
+    Read(fd, offset, num_bytes);
 }
 
 /**
@@ -60,9 +111,8 @@ void DiskManager::read_page(int fd, page_id_t page_no, char *offset, int num_byt
 page_id_t DiskManager::AllocatePage(int fd) {
     // Todo:
     // 简单的自增分配策略，指定文件的页面编号加1
-
     assert(fd >= 0 && fd < MAX_FD);
-    return fd2pageno_[fd] ++; 
+    return fd2pageno_[fd]++; 
 }
   
 
@@ -101,8 +151,11 @@ void DiskManager::destroy_dir(const std::string &path) {
 bool DiskManager::is_file(const std::string &path) {
     // Todo:
     // 用struct stat获取文件信息
-
-
+    struct stat st;
+    if (stat(path.c_str(), &st) < 0) {
+        return false;
+    } 
+    return S_ISREG(st.st_mode);
 }
 
 /**
@@ -112,9 +165,12 @@ void DiskManager::create_file(const std::string &path) {
     // Todo:
     // 调用open()函数，使用O_CREAT模式
     // 注意不能重复创建相同文件
-
-
-
+    struct stat st;
+    if (stat(path.c_str(), &st) >= 0) {
+        throw FileExistsError{path};
+    }
+    int fd = Open(path.c_str(), O_CREAT);
+    Close(fd);
 }
 
 /**
@@ -124,11 +180,14 @@ void DiskManager::destroy_file(const std::string &path) {
     // Todo:
     // 调用unlink()函数
     // 注意不能删除未关闭的文件
-
-
-
-
-
+    struct stat st;
+    if (path2fd_.find(path) != path2fd_.end()) {
+        throw FileNotFoundError{path};
+    }
+    if (stat(path.c_str(), &st) < 0) {
+        throw FileNotFoundError{path};
+    }
+    Unlink(path.c_str());
 }
 
 /**
@@ -152,7 +211,10 @@ int DiskManager::open_file(const std::string &path) {
         //fd2path_.insert(std::make_pair(fd, path));
         path2fd_[path] = fd;
         fd2path_[fd] = path;
-    } 
+    }
+    else {
+        fd = path2fd_[path];
+    }
 
     return fd;  
 }

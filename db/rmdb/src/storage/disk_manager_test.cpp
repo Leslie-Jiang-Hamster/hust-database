@@ -16,6 +16,7 @@
 #include <cstring>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 
 #include "gtest/gtest.h"
 
@@ -136,6 +137,7 @@ TEST_F(DiskManagerTest, PageOperation) {
     EXPECT_EQ(disk_manager_->is_file(filename), true);
     // 打开文件
     int fd = disk_manager_->open_file(filename);
+    std::cout << fd << std::endl;
     // 初始页面编号为0
     disk_manager_->set_fd2pageno(fd, 0);
 
