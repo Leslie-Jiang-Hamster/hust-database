@@ -11,9 +11,13 @@ bool BufferPoolManager::FindVictimPage(frame_id_t *frame_id) {
     // 1.1 未满获得frame
     // 1.2 已满使用lru_replacer中的方法选择淘汰页面
 
+    if (!free_list_.empty()) {
+        *frame_id = free_list_.front();
+        free_list_.pop_front();
+        return true;
+    }
 
-
-    return false;
+    return replacer_->Victim(frame_id);
 }
 
 /**
@@ -26,19 +30,16 @@ bool BufferPoolManager::FindVictimPage(frame_id_t *frame_id) {
 void BufferPoolManager::UpdatePage(Page *page, PageId new_page_id, frame_id_t new_frame_id) {
     // Todo:
     // 1 如果是脏页，写回磁盘，并且把dirty置为false
+    if (page->is_dirty_) {
+        disk_manager_->write_page(page->GetPageId().fd, page->GetPageId().page_no, page->GetData(), PAGE_SIZE);
+        page->is_dirty_ = false;
+    }
     // 2 更新page table
+    page_table_.erase(page->GetPageId());
+    page_table_[new_page_id] = new_frame_id;
     // 3 重置page的data，更新page id
-
-    // 1 如果是脏页，写回磁盘，并且把dirty置为false
-     
-
-    // 2 更新page table
-    //这里有个疑问：page在pages_数组中的位置是固定的，它的frame_id难道不应该是固定的吗？为什么还能改成新frame_id?
-     
-
-    // 3 重置page的data，更新page id
-
-    
+    page->ResetMemory();
+    page->id_ = new_page_id;
 }
 
 /**

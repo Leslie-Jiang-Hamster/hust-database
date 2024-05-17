@@ -29,6 +29,15 @@ static void Read(int fd, void *buf, size_t count) {
     }
 }
 
+static int Open(const char *path, int flags) {
+    int fd = -1;
+    if ((fd = open(path, flags)) < 0) {
+        perror("open");
+        throw UnixError{};
+    }
+    return fd;
+}
+
 static void Close(int fd) {
     if (close(fd) < 0) {
         perror("close");
@@ -160,11 +169,7 @@ void DiskManager::create_file(const std::string &path) {
     if (stat(path.c_str(), &st) >= 0) {
         throw FileExistsError{path};
     }
-    int fd = open(path.c_str(), O_CREAT, S_IRUSR | S_IWUSR);
-    if (fd < 0) {
-        perror("open(create)");
-        throw UnixError{};
-    }
+    int fd = Open(path.c_str(), O_CREAT);
     Close(fd);
 }
 
@@ -202,6 +207,8 @@ int DiskManager::open_file(const std::string &path) {
 
     if ( search == path2fd_.end() ) {
         fd = open( path.c_str(), O_RDWR);
+        //path2fd_.insert(std::make_pair(path, fd));
+        //fd2path_.insert(std::make_pair(fd, path));
         path2fd_[path] = fd;
         fd2path_[fd] = path;
     }
@@ -225,6 +232,7 @@ void DiskManager::close_file(int fd) {
         close(fd);
         const std::string path = fd2path_[fd];
         path2fd_.erase(path);
+        //path2fd_.erase( path2fd_.find((*it).second) );
         fd2path_.erase(fd);
     } else {
         throw FileNotOpenError(fd);

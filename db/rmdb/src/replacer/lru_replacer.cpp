@@ -1,5 +1,6 @@
 #include "lru_replacer.h"
-
+#include <cassert>
+#include <iostream>
 LRUReplacer::LRUReplacer(size_t num_pages) { max_size_ = num_pages; }
 
 LRUReplacer::~LRUReplacer() = default;
@@ -13,12 +14,17 @@ bool LRUReplacer::Victim(frame_id_t *frame_id) {
     // C++17 std::scoped_lock
     // 它能够避免死锁发生，其构造函数能够自动进行上锁操作，析构函数会对互斥量进行解锁操作，保证线程安全。
     std::scoped_lock lock{latch_};
-
+    assert(this->Size() >= 0 && this->Size() <= max_size_);
     // Todo:
     //  利用lru_replacer中的LRUlist_,LRUHash_实现LRU策略
     //  选择合适的frame指定为淘汰页面,赋值给*frame_id
-
-
+    if (LRUlist_.empty()) {
+        return false;
+    }
+    *frame_id = LRUlist_.front();
+    LRUlist_.pop_front();
+    assert(LRUhash_.find(*frame_id) != LRUhash_.end());
+    LRUhash_.erase(*frame_id);
     return true;
 }
 
@@ -31,8 +37,14 @@ void LRUReplacer::Pin(frame_id_t frame_id) {
     // Todo:
     // 固定指定id的frame
     // 在数据结构中移除该frame
- 
+    assert(this->Size() >= 0 && this->Size() <= max_size_);
 
+    if (LRUhash_.find(frame_id) == LRUhash_.end()) {
+        return;
+    }
+
+    LRUlist_.erase(LRUhash_[frame_id]);
+    LRUhash_.erase(frame_id);
 }
 
 /**
@@ -43,8 +55,15 @@ void LRUReplacer::Unpin(frame_id_t frame_id) {
     // Todo:
     //  支持并发锁
     //  选择一个frame取消固定
-  
+    std::scoped_lock lock{latch_};
+    assert(this->Size() >= 0 && this->Size() <= max_size_);
 
+    if (LRUhash_.find(frame_id) != LRUhash_.end()) {
+        return;
+    }
+
+    LRUlist_.push_back(frame_id);
+    LRUhash_[frame_id] = --LRUlist_.end();
 }
 
 /** @return replacer中能够victim的数量 */
