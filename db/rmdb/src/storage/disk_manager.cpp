@@ -29,15 +29,6 @@ static void Read(int fd, void *buf, size_t count) {
     }
 }
 
-static int Open(const char *path, int flags) {
-    int fd = -1;
-    if ((fd = open(path, flags)) < 0) {
-        perror("open");
-        throw UnixError{};
-    }
-    return fd;
-}
-
 static void Close(int fd) {
     if (close(fd) < 0) {
         perror("close");
@@ -111,7 +102,7 @@ void DiskManager::read_page(int fd, page_id_t page_no, char *offset, int num_byt
 page_id_t DiskManager::AllocatePage(int fd) {
     // Todo:
     // 简单的自增分配策略，指定文件的页面编号加1
-    assert(fd >= 0 && fd < MAX_FD);
+    assert(fd >= 0 && fd <= MAX_FD);
     return fd2pageno_[fd]++; 
 }
   
@@ -169,7 +160,7 @@ void DiskManager::create_file(const std::string &path) {
     if (stat(path.c_str(), &st) >= 0) {
         throw FileExistsError{path};
     }
-    int fd = Open(path.c_str(), O_CREAT);
+    int fd = open(path.c_str(), O_CREAT, S_IRUSR | S_IWUSR);
     Close(fd);
 }
 
@@ -202,7 +193,6 @@ int DiskManager::open_file(const std::string &path) {
     if ( is_file(path) == 0 ) {
         throw FileNotFoundError(path);
     } 
-    
     auto search = path2fd_.find(path);
 
     if ( search == path2fd_.end() ) {

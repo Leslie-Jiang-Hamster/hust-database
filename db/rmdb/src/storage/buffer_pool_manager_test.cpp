@@ -24,6 +24,7 @@
 
 #include "buffer_pool_manager.h"
 
+#include <iostream>
 #include <cassert>
 #include <cstring>
 #include <ctime>
